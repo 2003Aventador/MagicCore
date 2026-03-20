@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l:*)",
+      "Bash(chmod:*)",
+      "Bash(ls -lh:*)"
+    ]
+  }
+}
