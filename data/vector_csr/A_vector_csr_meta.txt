@@ -1,0 +1,4 @@
+shape: 9 3
+d: 3
+num_vector_blocks: 4
+row_blocks_count: 3
