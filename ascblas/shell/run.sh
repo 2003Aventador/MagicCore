@@ -1,19 +1,21 @@
 #!/bin/bash
 
 ################################################################################
-# SPMM (Sparse Matrix Multiplication) Run Script for Ascend 910B3
+# SPMM (Sparse Matrix Multiplication) Run Script for Ascend 910B3 - SR-BCRS Format
 #
-# This script compiles and runs the BSR-format SPMM kernel on Ascend 910B3
-# Usage: ./run.sh <transA> <transB> <M> <N> <K> <lda> <ldb> <ldc> <block_size> [mode] [device_id]
+# Usage: ./run.sh <M> <N> <K> [sparsity] [d] [mode] [device_id]
 #
 # Parameters:
-#   transA, transB: 0 (no transpose) or 1 (transpose)
 #   M, N, K: Matrix dimensions for C = A × B
-#   lda, ldb, ldc: Leading dimensions
-#   block_size: BSR block size (multiple of 16, recommended: 128)
-#   mode: "prof" (performance test), "error" (functional test with error output)
-#         or default (functional test with verification)
+#   sparsity: Sparsity percentage for A matrix (default: 85)
+#   d: Vector block dimension (default: 16, should match vec_length in kernel)
+#   mode: "prof" (performance test) or default (functional test)
 #   device_id: NPU device ID (default: 0)
+#
+# Examples:
+#   ./run.sh 256 256 256                    # Basic test with default sparsity
+#   ./run.sh 512 512 512 90                 # 90% sparsity
+#   ./run.sh 1024 1024 1024 85 16 prof 0    # Performance test
 ################################################################################
 
 set -e
@@ -26,40 +28,43 @@ function check_error {
     fi
 }
 
-# Set Canndev DLL path for 910B3
+# Set library path for Ascend
+export ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest
 export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
 
+# 这里和spmm.h的编译绑定是对应的
 OP_NAME="spmm_kernel"
 EXECUTABLE="spmm"
 
 # Parse command line arguments
-if [ $# -lt 9 ]; then
-    echo "Usage: $0 <transA> <transB> <M> <N> <K> <lda> <ldb> <ldc> <block_size> [mode] [device_id]"
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <M> <N> <K> [sparsity] [d] [mode] [device_id]"
     echo ""
-    echo "Example:"
-    echo "  $0 0 0 1024 1024 1024 1024 1024 1024 128"
-    echo "  $0 0 0 1024 1024 1024 1024 1024 1024 128 prof 0"
-    echo "  $0 0 0 1024 1024 1024 1024 1024 1024 128 error 0"
+    echo "Parameters:"
+    echo "  M, N, K:  Matrix dimensions"
+    echo "  sparsity: Sparsity percentage for A (default: 85)"
+    echo "  d:        Vector block dimension (default: 16)"
+    echo "  mode:     prof (performance) or default (functional)"
+    echo "  device_id: NPU device ID (default: 0)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 256 256 256"
+    echo "  $0 512 512 512 90"
+    echo "  $0 1024 1024 1024 85 16 prof 0"
     exit 1
 fi
 
-transA=$1
-transB=$2
-M=$3
-N=$4
-K=$5
-lda=$6
-ldb=$7
-ldc=$8
-block_size=$9
+M=$1
+N=$2
+K=$3
+sparsity=${4:-85}
+d=${5:-16}
 
-# Set mode (prof/error/verify)
+# Set mode (prof/default)
 MODE="verify"
-if [ $# -ge 10 ]; then
-    if [ "${10}" == "prof" ]; then
+if [ $# -ge 6 ]; then
+    if [ "${6}" == "prof" ]; then
         MODE="prof"
-    elif [ "${10}" == "error" ]; then
-        MODE="error"
     else
         MODE="verify"
     fi
@@ -67,58 +72,44 @@ fi
 
 # Set device ID
 device_id=0
-if [ $# -ge 11 ]; then
-    device_id=${11}
+if [ $# -ge 7 ]; then
+    device_id=${7}
 fi
 
 # Set verify level based on mode
 verifyLevel=1  # Default: verify correctness
 if [ "$MODE" == "prof" ]; then
     verifyLevel=0  # Performance mode: no verification
-elif [ "$MODE" == "error" ]; then
-    verifyLevel=2  # Output error for CSV collection
 fi
 
 echo "=========================================="
-echo "SPMM Configuration:"
+echo "SPMM SR-BCRS Configuration:"
 echo "  Operation: C = A × B"
 echo "  Matrix dimensions: M=${M}, N=${N}, K=${K}"
-echo "  Leading dims: lda=${lda}, ldb=${ldb}, ldc=${ldc}"
-echo "  BSR block size: ${block_size}"
-echo "  Transpose: transA=${transA}, transB=${transB}"
+echo "  Sparsity: ${sparsity}%"
+echo "  Vector block dimension: d=${d}"
 echo "  Mode: ${MODE}"
 echo "  Device ID: ${device_id}"
 echo "=========================================="
 
 # Create directories
-mkdir -p data
+mkdir -p ../data
 mkdir -p build
 mkdir -p prof
 
-# Step 1: Generate test data (skip for performance mode)
-if [ "$MODE" != "prof" ]; then
-    echo "[1/4] Generating test data..."
-    python3 ${EXECUTABLE}_gen_data.py $transA $transB $M $N $K $lda $ldb $ldc $block_size
-    check_error "Data generation"
-else
-    echo "[1/4] Performance mode: Skipping data generation"
-fi
+# Step 1: Generate test data
+echo "[1/3] Generating SR-BCRS test data..."
+python3 spmm_gen_data.py ${M} ${N} ${K} ${sparsity} ${d}
+check_error "Data generation"
 
 # Step 2: Compile kernel and host code
-if [ "$MODE" == "verify" ]; then
-    echo "[2/4] Compiling SPMM kernel and host code..."
-    make clean > /dev/null
-    make > /dev/null 2>&1
-    check_error "Compilation"
-else
-    echo "[2/4] Compiling SPMM kernel and host code..."
-    make clean > /dev/null
-    make > /dev/null 2>&1
-    check_error "Compilation"
-fi
+echo "[2/3] Compiling SPMM kernel and host code..."
+make clean > /dev/null 2>&1
+make > /dev/null 2>&1
+check_error "Compilation"
 
 # Step 3: Run the executable
-echo "[3/4] Running SPMM kernel..."
+echo "[3/3] Running SPMM kernel..."
 cd build
 
 if [ "$MODE" == "prof" ]; then
@@ -130,7 +121,7 @@ if [ "$MODE" == "prof" ]; then
     export ASCEND_GLOBAL_LOG_LEVEL=1
     export ASCEND_SLOG_PRINT_TO_STDOUT=0
 
-    msprof --application="./${EXECUTABLE} $transA $transB $M $N $K $lda $ldb $ldc $block_size $verifyLevel $device_id" \
+    msprof --application="./${EXECUTABLE} ${M} ${N} ${K} ${verifyLevel} ${device_id}" \
            --output=../prof \
            --ai-core=on \
            --ai-cpu=off \
@@ -139,18 +130,14 @@ if [ "$MODE" == "prof" ]; then
     check_error "Performance profiling"
 
     # Process profiling results
-    echo "[4/4] Processing profiling results..."
+    echo ""
     cd ..
-    if [ -f "prof.py" ]; then
-        python3 prof.py $(find prof -name "op_*.csv" 2>/dev/null | head -1) $M $N $K $lda $ldb $ldc $block_size
-    else
-        echo "  Profiling completed. Results in prof/ directory"
-        ls -lh prof/
-    fi
+    echo "Profiling completed. Results in prof/ directory"
+    ls -lh prof/
 else
     # Functional verification mode
     echo "  Running functional verification..."
-    ./${EXECUTABLE} $transA $transB $M $N $K $lda $ldb $ldc $block_size $verifyLevel $device_id
+    ./${EXECUTABLE} ${M} ${N} ${K} ${verifyLevel} ${device_id}
     check_error "Kernel execution"
 
     cd ..

@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 
 ################################################################################
-# SPMM Performance Analysis Script
+# SPMM Performance Analysis Script for SR-BCRS Format
 #
 # Parses msprof output and extracts performance metrics for SPMM kernel
 ################################################################################
 
 import sys
-import pandas as pd
-import numpy as np
+import os
 
 def parse_op_csv(csv_file):
     """Parse the op_*.csv file from msprof output"""
     try:
+        import pandas as pd
+        
         df = pd.read_csv(csv_file)
 
         # Filter for SPMM kernel operations
@@ -29,78 +30,90 @@ def parse_op_csv(csv_file):
         max_time = spmm_df['dur'].max() / 1e6
         count = len(spmm_df)
 
-        # Calculate FLOPs (A × B)
-        # Each operation does: C[M,N] = A[M,K] × B[K,N]
-        # But with sparsity, only non-zero blocks are computed
-        flops_per_op = 2 * M * N * K  # Dense FLOPs
-
-        # Extract sparsity from kernel parameters if available
-        # This is approximate - actual depends on BSR nnz_blocks
-        sparsity_factor = 0.1  # Assume 90% sparsity (10% non-zero blocks)
-        actual_flops = flops_per_op * sparsity_factor
-
         perf_metrics = {
             'total_time_ms': total_time,
             'avg_time_ms': avg_time,
             'min_time_ms': min_time,
             'max_time_ms': max_time,
-            'count': count,
-            'theoretical_flops': flops_per_op,
-            'actual_flops': actual_flops,
-            'throughput_gflops': (actual_flops / 1e9) / (avg_time / 1000) if avg_time > 0 else 0
+            'count': count
         }
 
         return perf_metrics
 
+    except ImportError:
+        print("Warning: pandas not installed, using basic parsing")
+        return None
     except Exception as e:
         print(f"Error parsing CSV file: {e}")
         return None
 
-def print_performance_summary(metrics, M, N, K, lda, ldb, ldc, block_size):
-    """Print performance summary in a formatted way"""
-    if not metrics:
-        return
+def calculate_theoretical_flops(M, N, K, sparsity, d):
+    """
+    计算理论FLOPs
+    - 稀疏矩阵A的非零元素比例: (100-sparsity)/100
+    - 每个非零元素是d×1向量，实际计算d×N
+    """
+    density = (100 - sparsity) / 100.0
+    nnz_elements = M * K * density  # 非零元素个数
+    flops_per_element = 2 * d * N   # 每个非零向量块的计算量
+    total_flops = nnz_elements * flops_per_element
+    return total_flops
 
+def print_performance_summary(metrics, M, N, K, sparsity, d):
+    """Print performance summary in a formatted way"""
     print("\n" + "=" * 80)
-    print("SPMM Performance Summary")
+    print("SPMM SR-BCRS Performance Summary")
     print("=" * 80)
     print(f"Matrix Dimensions: M={M}, N={N}, K={K}")
-    print(f"Leading Dimensions: lda={lda}, ldb={ldb}, ldc={ldc}")
-    print(f"BSR Block Size: {block_size}")
+    print(f"Sparsity: {sparsity}%")
+    print(f"Vector Block Dimension: d={d}")
     print("-" * 80)
-    print(f"Operation Count: {metrics['count']}")
-    print(f"Total Time: {metrics['total_time_ms']:.3f} ms")
-    print(f"Average Time: {metrics['avg_time_ms']:.3f} ms")
-    print(f"Min Time: {metrics['min_time_ms']:.3f} ms")
-    print(f"Max Time: {metrics['max_time_ms']:.3f} ms")
-    print("-" * 80)
-    print(f"Theoretical FLOPs (dense): {metrics['theoretical_flops'] / 1e9:.3f} GFLOPs")
-    print(f"Actual FLOPs (sparse): {metrics['actual_flops'] / 1e9:.3f} GFLOPs")
-    print(f"Effective Throughput: {metrics['throughput_gflops']:.3f} GFLOPS")
+    
+    if metrics:
+        print(f"Operation Count: {metrics['count']}")
+        print(f"Total Time: {metrics['total_time_ms']:.3f} ms")
+        print(f"Average Time: {metrics['avg_time_ms']:.3f} ms")
+        print(f"Min Time: {metrics['min_time_ms']:.3f} ms")
+        print(f"Max Time: {metrics['max_time_ms']:.3f} ms")
+        print("-" * 80)
+        
+        # 计算理论性能
+        theoretical_flops = calculate_theoretical_flops(M, N, K, sparsity, d)
+        if metrics['avg_time_ms'] > 0:
+            throughput_gflops = (theoretical_flops / 1e9) / (metrics['avg_time_ms'] / 1000)
+            print(f"Theoretical FLOPs: {theoretical_flops / 1e9:.3f} GFLOPs")
+            print(f"Effective Throughput: {throughput_gflops:.3f} GFLOPS")
+    else:
+        print("Performance metrics not available (pandas not installed)")
+    
     print("=" * 80)
 
 def main():
-    if len(sys.argv) < 7:
-        print("Usage: python3 prof.py <op_csv_file> <M> <N> <K> <lda> <ldb> <ldc> <block_size>")
+    if len(sys.argv) < 6:
+        print("Usage: python3 prof.py <op_csv_file> <M> <N> <K> <sparsity> <d>")
+        print("  op_csv_file: Path to msprof op_*.csv file")
+        print("  M, N, K: Matrix dimensions")
+        print("  sparsity: Sparsity percentage")
+        print("  d: Vector block dimension")
+        print("\nExample:")
+        print("  python3 prof.py prof/op_summary_*.csv 1024 1024 1024 85 16")
         sys.exit(1)
 
     csv_file = sys.argv[1]
     M = int(sys.argv[2])
     N = int(sys.argv[3])
     K = int(sys.argv[4])
-    lda = int(sys.argv[5])
-    ldb = int(sys.argv[6])
-    ldc = int(sys.argv[7])
-    block_size = int(sys.argv[8])
+    sparsity = int(sys.argv[5])
+    d = int(sys.argv[6])
+
+    if not os.path.exists(csv_file):
+        print(f"Error: CSV file not found: {csv_file}")
+        sys.exit(1)
 
     print(f"Analyzing performance data from: {csv_file}")
     metrics = parse_op_csv(csv_file)
 
-    if metrics:
-        print_performance_summary(metrics, M, N, K, lda, ldb, ldc, block_size)
-    else:
-        print("Failed to parse performance data")
-        sys.exit(1)
+    print_performance_summary(metrics, M, N, K, sparsity, d)
 
 if __name__ == "__main__":
     main()

@@ -1,16 +1,15 @@
 ################################################################################
-# SPMM (Sparse Matrix Multiplication) Makefile for Ascend 910B3
+# SPMM (Sparse Matrix Multiplication) Makefile for Ascend 910B3 - SR-BCRS Format
 #
-# This Makefile compiles the BSR-format SPMM kernel for Ascend 910B3
+# This Makefile compiles the SR-BCRS format SPMM kernel for Ascend 910B3
 # Architecture: dav-c220 (Ascend 910B3 with 20 AI Cores)
 ################################################################################
 
 CANN_DIR = $(ASCEND_HOME_PATH)
 OP_NAME = spmm_kernel
-INCLUDE_DIR = -I../include
+INCLUDE_DIR = -I../include -I../src/utils
 
 # Target: Compile both AIC and AIV kernels, link them, and build host executable
-# 使用.cce文件编译，参考ascblasHgemm的编译流程
 all: prepare $(OP_NAME)_aic.o $(OP_NAME)_aiv.o $(OP_NAME).o main
 
 # Create build directory
@@ -19,8 +18,7 @@ prepare:
 
 ################################################################################
 # Kernel Compilation (AIC - AI Core for computation)
-# AIC kernel performs the actual BSR SPMM computation using Cube units
-# 从.cce文件编译，而不是.cpp文件
+# AIC kernel performs the actual SR-BCRS SPMM computation using Cube units
 ################################################################################
 $(OP_NAME)_aic.o: $(OP_NAME).cce
 	ccec -std=c++17 -c -x cce -O2 $(OP_NAME).cce --cce-aicore-arch=dav-c220-cube --cce-aicore-only \
@@ -33,8 +31,7 @@ $(OP_NAME)_aic.o: $(OP_NAME).cce
 
 ################################################################################
 # Kernel Compilation (AIV - AI Vector Core for data preprocessing)
-# AIV kernel performs B matrix padding if needed
-# 从.cce文件编译，而不是.cpp文件
+# AIV kernel performs data preprocessing if needed
 ################################################################################
 $(OP_NAME)_aiv.o: $(OP_NAME).cce
 	ccec -std=c++17 -c -x cce -O2 $(OP_NAME).cce --cce-aicore-arch=dav-c220-vec --cce-aicore-only \
@@ -47,7 +44,7 @@ $(OP_NAME)_aiv.o: $(OP_NAME).cce
 
 ################################################################################
 # Link AIC and AIV object files into a single kernel binary
-# IMPORTANT: Output filename must be spmm.o (not spmm_kernel.o) to match host code
+# Output filename: spmm.o (matches host code)
 ################################################################################
 $(OP_NAME).o: $(OP_NAME)_aic.o $(OP_NAME)_aiv.o
 	ld.lld -m aicorelinux -Ttext=0 -z separate-code \
@@ -59,10 +56,10 @@ $(OP_NAME).o: $(OP_NAME)_aic.o $(OP_NAME)_aiv.o
 # Host Executable Compilation
 # Compiles the host code that launches the SPMM kernel
 ################################################################################
-main: main.cpp
+main: ../src/main.cpp
 	g++ -O2 -fpic -std=c++17 \
-	handle.cc \
-	main.cpp \
+	../include/handle.cc \
+	../src/main.cpp \
 	-I$(CANN_DIR)/include \
 	$(INCLUDE_DIR) \
 	-L$(CANN_DIR)/lib64 \
@@ -78,4 +75,4 @@ main: main.cpp
 clean:
 	rm -rf build/
 
-.PHONY: all prepare clean ca main main_ca
+.PHONY: all prepare clean

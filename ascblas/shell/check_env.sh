@@ -1,17 +1,15 @@
 #!/bin/bash
 
 ################################################################################
-# SPMM Environment Check Script
-# Validates the environment for Ascend 910B3 before compilation and execution
+# SPMM Environment Check Script for Ascend 910B3 - SR-BCRS Format
+# Validates the environment before compilation and execution
 ################################################################################
 
 echo "=========================================="
-echo "SPMM Environment Check for Ascend 910B3"
+echo "SPMM SR-BCRS Environment Check for Ascend 910B3"
 echo "=========================================="
 
-# -----------------------------------------------------------
 # 尝试自动加载环境变量
-# -----------------------------------------------------------
 DEFAULT_ASCEND_PATH="/usr/local/Ascend/ascend-toolkit/set_env.sh"
 
 # 如果环境变量未设置，且默认路径下的脚本存在，则自动 source
@@ -127,6 +125,16 @@ if command -v python3 &> /dev/null; then
         check_warn "NumPy not installed (required for data generation)"
         echo "   Install with: pip3 install numpy"
     fi
+
+    # Check scipy
+    python3 -c "import scipy" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        scipy_version=$(python3 -c "import scipy; print(scipy.__version__)" 2>/dev/null)
+        check_pass "SciPy found: $scipy_version"
+    else
+        check_warn "SciPy not installed (required for CSR format)"
+        echo "   Install with: pip3 install scipy"
+    fi
 else
     check_fail "Python 3 not found"
 fi
@@ -135,15 +143,19 @@ fi
 echo "[5/5] Checking source files..."
 
 required_files=(
-    "spmm_kernel.cpp"
-    "spmm.h"
-    "main.cpp"
-    "bsr_utils.h"
-    "handle.cc"
+    "../src/spmm_kernel.cce"
+    "../src/spmm.h"
+    "../src/main.cpp"
+    "../src/utils/sr_bcrs_utils.h"
+    "../src/utils/file_utils.h"
+    "../include/handle.cc"
     "makefile"
     "run.sh"
+    "build.sh"
+    "check_env.sh"
     "spmm_gen_data.py"
     "prof.py"
+    "README.md"
 )
 
 for file in "${required_files[@]}"; do
@@ -184,4 +196,3 @@ else
     echo "Please fix the issues above before building."
     safe_exit 1
 fi
-

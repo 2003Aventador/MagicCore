@@ -1,12 +1,12 @@
 #!/bin/bash
 
 ################################################################################
-# SPMM Build Helper Script
-# Convenient script to clean, compile, and test SPMM on Ascend 910B3
+# SPMM Build Helper Script for Ascend 910B3
+# Convenient script to clean, compile, and test SPMM with SR-BCRS format
 ################################################################################
 
 echo "=========================================="
-echo "SPMM Build and Test Helper"
+echo "SPMM SR-BCRS Build and Test Helper"
 echo "=========================================="
 
 # Check environment
@@ -45,18 +45,18 @@ fi
 echo "[4/4] Running quick test..."
 if [ -f "./build/spmm" ]; then
     echo "  Executable created: build/spmm"
-    echo "  Testing with small matrix (64×64)..."
+    echo "  Testing with small matrix (256×256)..."
 
-    # Generate test data
-    python3 spmm_gen_data.py 0 0 64 64 64 64 64 64 64 > /dev/null 2>&1
+    # Generate test data (SR-BCRS format: M N K sparsity d)
+    python3 spmm_gen_data.py 256 256 256 85 16 > /dev/null 2>&1
 
     # Run test
     cd build
-    ./spmm 0 0 64 64 64 64 64 64 64 1 0 > /dev/null 2>&1
+    ./spmm 256 256 256 1 0 > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "✓ Quick test passed"
     else
-        echo "⚠ Quick test failed (check logs with: ./run.sh 0 0 64 64 64 64 64 64 64)"
+        echo "⚠ Quick test failed (check logs with: ./run.sh 256 256 256)"
     fi
     cd ..
 else
@@ -70,9 +70,9 @@ echo "Build completed successfully!"
 echo "=========================================="
 echo ""
 echo "Quick start:"
-echo "  1. Function test:  ./run.sh 0 0 512 512 512 512 512 512 128"
-echo "  2. Performance:    ./run.sh 0 0 1024 1024 1024 1024 1024 1024 128 prof 0"
-echo "  3. Detailed test:  ./run.sh 0 0 2048 2048 2048 2048 2048 2048 128 error 0"
+echo "  1. Function test:  ./run.sh 256 256 256"
+echo "  2. Performance:    ./run.sh 1024 1024 1024 prof 0"
+echo "  3. Custom sparsity: ./run.sh 512 512 512 90 16"
 echo ""
 echo "See README.md for detailed documentation"
 echo "=========================================="
