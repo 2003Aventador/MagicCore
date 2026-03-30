@@ -9,11 +9,11 @@ aclError ascblasSpmm(
     int vec_length,
     int K0,
     int N0,
-    half* values,
+    __fp16* values,
     int* row_indices,
     int* col_indices,
     int* row_offsets,
-    half *B,
+    __fp16 *B,
     float *C
 )
 {
@@ -39,11 +39,11 @@ aclError ascblasSpmm(
         int vec_length;
         int K0;
         int N0;
-        half *values;
+        __fp16 *values;
         int *row_indices;
         int *col_indices;
         int *row_offsets;
-        half *B;
+        __fp16 *B;
         float *C;
     } KernelArgs;
 

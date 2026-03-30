@@ -3,10 +3,8 @@
 
 
 #include "kernel_operator.h"
-#include "ascblas_kernel_utils.h"
+// #include "ascblas_kernel_utils.h"
 #include "stdio.h"
-
-using namespace fp16;
 
 #define NUM_ELE_PERBLOCK 16
 #define CUBE_M0 16
@@ -19,34 +17,34 @@ using namespace fp16;
 
 // 这个转置函数用来对矩阵的行列主序进行转换
 // 要与昇腾文档中提供的“转置”概念区分开，昇腾提出的转置概念更像是重排布，主要是为了适配MMA计算的输入格式，而这个函数是真正意义上的矩阵转置
-void transpose(__cbuf__ __fp16 *matrix, int M, int N) {
-    int total = M * N;
+// __aicore__ inline void transpose(__cbuf__ half *matrix, int M, int N) {
+//     int total = M * N;
 
-    for (int start = 0; start < total; start++) {
-        int current = start;
+//     for (int start = 0; start < total; start++) {
+//         int current = start;
 
-        // 找这个位置是否是循环的最小起点
-        do {
-            current = (current % M) * N + (current / M);
-        } while (current > start);
+//         // 找这个位置是否是循环的最小起点
+//         do {
+//             current = (current % M) * N + (current / M);
+//         } while (current > start);
 
-        if (current < start) continue;
+//         if (current < start) continue;
 
-        // 开始做循环置换
-        half temp = matrix[start];
-        current = start;
+//         // 开始做循环置换
+//         half temp = matrix[start];
+//         current = start;
 
-        while (1) {
-            int next = (current % M) * N + (current / M);
-            if (next == start) break;
+//         while (1) {
+//             int next = (current % M) * N + (current / M);
+//             if (next == start) break;
 
-            matrix[current] = matrix[next];
-            current = next;
-        }
+//             matrix[current] = matrix[next];
+//             current = next;
+//         }
 
-        matrix[current] = temp;
-    }
-}
+//         matrix[current] = temp;
+//     }
+// }
 
 __aicore__ __inline__ void ascblasSpmmAIC(
     int M,
@@ -114,7 +112,7 @@ __aicore__ __inline__ void ascblasSpmmAIC(
         // 后面非16对齐的时候用
         int residue = nnz_vectors % K0;
         // 索引数组
-        int index[K0];
+        int index[128];
 
         // 如果该行没有非零块，跳过
         if (nnz_vectors == 0) {
@@ -152,7 +150,7 @@ __aicore__ __inline__ void ascblasSpmmAIC(
             wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID2);
 
             // 对L1中的A进行转置以确保满足L0行排布需求
-            transpose(dst_A, vec_length, cnt);
+            // transpose(dst_A, vec_length, cnt);
             // transpose是原地操作，需要等待完成后再进行后续读取
             pipe_barrier(PIPE_MTE2);
 
@@ -174,14 +172,15 @@ __aicore__ __inline__ void ascblasSpmmAIC(
                         static_cast<uint16_t>(1),           // nBurst
                         static_cast<uint16_t>(remain),      // lenBurst, TODO: padding
                         static_cast<uint16_t>(0),           // srcGap, 只拷贝B的一行，不需要使用该参数
-                        static_cast<uint16_t>(0)            // dstGap, 只拷贝B的一行，不需要使用该参数
+                        static_cast<uint16_t>(0),           // dstGap, 只拷贝B的一行，不需要使用该参数
+                        PAD_NONE
                     );
                 }
                 set_flag(PIPE_MTE2, PIPE_MTE1, EVENT_ID4);
                 wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID4);
 
                 // 对B进行转置以满足L0的列优先策略
-                transpose(dst_B, cnt, remain);
+                // transpose(dst_B, cnt, remain);
                 // transpose是原地操作，需要等待完成后再进行后续读取
                 pipe_barrier(PIPE_MTE2);
 
@@ -200,8 +199,8 @@ __aicore__ __inline__ void ascblasSpmmAIC(
                     static_cast<uint16_t>(1),                               // srcStride
                     static_cast<uint16_t>(0),                               // dstGap
                     static_cast<uint8_t>(0),                                // sid
-                    static_cast<bool>(true),                                // transpose, 这里的分形转置只为了适配后续的MMA计算，而且更适合叫重排布
-                    0                                                       // addr_cal_mode
+                    true,                                                   // transpose, 这里的分形转置只为了适配后续的MMA计算，而且更适合叫重排布
+                    inc                                                     // addr_cal_mode
                 );
                 load_cbuf_to_cb(
                     dst_L0_b,
@@ -211,8 +210,8 @@ __aicore__ __inline__ void ascblasSpmmAIC(
                     static_cast<uint16_t>(1),                           // srcStride
                     static_cast<uint16_t>(0),                           // dstGap
                     static_cast<uint8_t>(0),                            // sid
-                    static_cast<bool>(true),                            // transpose, 这里的分形转置只为了适配后续的MMA计算
-                    0                                                   // addr_cal_mode
+                    true,                                               // transpose, 这里的分形转置只为了适配后续的MMA计算
+                    inc                                                 // addr_cal_mode
                 );
 
                 set_flag(PIPE_MTE1, PIPE_M, EVENT_ID6);
@@ -256,7 +255,7 @@ __aicore__ __inline__ void ascblasSpmmAIC(
          * config[32:47]: 256(16*16), 0000 0001 0000 0000
          * = 33685512
         */
-        set_nd_para(33,685,512);
+        set_nd_para(33685512);
         copy_matrix_cc_to_gm(
             dst_Gm_C,
             src_L0_C,
@@ -266,12 +265,12 @@ __aicore__ __inline__ void ascblasSpmmAIC(
             static_cast<uint32_t>(N),               // dstStride_dst_D
             static_cast<uint16_t>(M),               // srcStride
             static_cast<uint8_t>(0),                // UnitFlagMode
-            5'b00000,                               // QuantRPE
-            3'b000,                                 // ReLUPRE
+            static_cast<uint8_t>(0b00000),          // QuantRPE
+            static_cast<uint8_t>(0b000),            // ReLUPRE
             static_cast<bool>(0),                   // channelSplit
             static_cast<bool>(1)                    // NZ2ND_EN
         );
-
+    }
     // wait_flag(PIPE_M, PIPE_MTE1, EVENT_ID0);
     // wait_flag(PIPE_M, PIPE_MTE1, EVENT_ID1);
     // wait_flag(PIPE_MTE1, PIPE_MTE2, EVENT_ID0);

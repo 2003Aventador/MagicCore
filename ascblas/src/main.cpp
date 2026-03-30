@@ -2,11 +2,14 @@
 #include "spmm.h"
 #include "sr_bcrs_utils.h"
 #include "file_utils.h"
+#include "data_utils.h"
 #include <vector>
 #include <iostream>
 
 // deviceId 表示程序运行在第几号卡上
 int deviceId = 0;
+
+int verifyLevel = 0; // 0: 不验证结果，1: 验证结果并打印错误信息，2: 验证结果并打印详细对比信息
 
 int main(int argc, char **argv)
 {
@@ -47,7 +50,7 @@ int main(int argc, char **argv)
     ascblasGetStream(handle, &stream);
 
     __fp16 *h_B = nullptr;
-    __fp16 *h_C = nullptr;
+    float *h_C = nullptr;
     CALL_RT(aclrtMallocHost((void **)(&h_B), B_size));
     CALL_RT(aclrtMallocHost((void **)(&h_C), C_size));
 
@@ -76,7 +79,7 @@ int main(int argc, char **argv)
     int32_t *d_col_indices = nullptr;
     int32_t *d_row_offsets = nullptr;
     __fp16 *d_B = nullptr;
-    __fp16 *d_C = nullptr;
+    float *d_C = nullptr;
 
     CALL_RT(aclrtMalloc((void **)(&d_values), values_size, ACL_MEM_MALLOC_HUGE_FIRST));
     CALL_RT(aclrtMalloc((void **)(&d_row_indices), row_indices_size, ACL_MEM_MALLOC_HUGE_FIRST));
