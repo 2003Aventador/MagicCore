@@ -149,13 +149,11 @@ required_files=(
     "../src/utils/sr_bcrs_utils.h"
     "../src/utils/file_utils.h"
     "../include/handle.cc"
+    "../include/data_utils.h"
     "makefile"
     "run.sh"
     "build.sh"
-    "check_env.sh"
     "spmm_gen_data.py"
-    "prof.py"
-    "README.md"
 )
 
 for file in "${required_files[@]}"; do

@@ -169,7 +169,6 @@ def print_vector_blocks_sorted(vector_info, mat_name):
     """
     按行数从小到大、列数从小到大打印向量块（满足验证顺序要求）
     """
-    print(f"\n=== {mat_name}矩阵 - 向量块信息（按行、列排序）===")
     if not vector_info:
         print("⚠️  无向量块数据")
         return
@@ -179,7 +178,6 @@ def print_vector_blocks_sorted(vector_info, mat_name):
 
     for idx, vec in enumerate(sorted_vector_info):
         vals_str = ", ".join([f"{v:.4f}" for v in vec["values"]])
-        print(f"向量块 #{idx+1}: 行[{vec['start_row']}~{vec['end_row']}], 列={vec['col']}, 值=[{vals_str}]")
 
 def generate_spmm_data(M, N, K, sparsity, d, save_dir):
     """

@@ -24,20 +24,20 @@
  * SR-BCRS存储结构
  * ------------------------------------------------------------
  * 
- * row_indices：
+ * row_offsets：
  * 记录每一个 vector row 在原始矩阵中的真实行索引，
  * 用于在计算完成后将结果写回到正确的矩阵位置。
  * 
- * row_offsets：
+ * row_indices：
  * 记录每一个 vector row 的非零向量范围（CSR-style）。
  * 
- *     row_offsets[i]      = 第 i 个 vector row 的起始位置
- *     row_offsets[i + 1]  = 第 i 个 vector row 的结束位置
+ *     row_indices[i]      = 第 i 个 vector row 的起始位置
+ *     row_indices[i + 1]  = 第 i 个 vector row 的结束位置
  * 
  * 因此：
  * 
  *     第 i 个 vector row 的非零向量个数 =
- *     row_offsets[i+1] - row_offsets[i]
+ *     row_indices[i+1] - row_indices[i]
  * 
  * col_indices：
  * 记录每个非零向量对应的列号，
@@ -70,14 +70,14 @@
  * 而是由row_offsets隐式表示。
  */
 
- public void sparse_to_sr_bcrs(
-       const int vec_length,       // 向量长度，固定为16
-       const int stride,           // 步长，一个tile_A块中的元素（向量）个数
-       const int* row_indices,     // AI Core与真实处理tile_C之间的映射，暂时保留，无需关心
-       const int* row_offsets,     // row
-       const int* col_indices,
-       const half* values,
-       const half* sparse_matrix_A
+void sparse_to_sr_bcrs(
+       const int vec_length,              // 向量长度，固定为16
+       const int stride,                  // 步长，一个tile_A块中的元素（向量）个数
+       const int* row_indices,            // 该稀疏格式的行索引数组
+       const int* row_offsets,            // AI Core与真实处理tile_C之间的映射，暂时保留，无需关心
+       const int* col_indices,            // 该稀疏格式的列索引数组
+       const __fp16* values,              // 该稀疏格式的数值数组
+       const __fp16* sparse_matrix_A      // 原始稀疏矩阵A的数值数组
  )
  {
 

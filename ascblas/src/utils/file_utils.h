@@ -68,6 +68,31 @@ inline void ReadFloat32ToFp16(const std::string &file_path, __fp16 *data_fp16, s
     delete[] data_float;
 }
 
+
+/**
+ * @brief 读取float32格式的矩阵
+ * @param file_path 二进制文件路径
+ * @param data_fp16 输出：float格式矩阵
+ * @param count 元素个数
+ */
+inline void ReadFloat32Matrix(const std::string &file_path, float *data, size_t count)
+{
+    // 1. 读取float32数据
+    float *data_float = new float[count];
+    ReadBinFile<float>(file_path, data_float, count);
+
+    // 2. 打印前16个元素验证
+    for (size_t i = 0; i < 16 && i < count; i++)
+    {
+        printf("%.4f ", (float)data_float[i]);
+        if ((i + 1) % 8 == 0)
+            printf("\n");
+    }
+    printf("\n");
+
+    delete[] data_float;
+}
+
 /**
  * @brief 读取文本元信息文件（仅保留核心功能）
  * @param file_path 元信息文件路径
