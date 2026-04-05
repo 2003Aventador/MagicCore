@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cmath>
 
 /**
  * @brief 通用二进制文件读取函数（支持任意类型）
@@ -149,14 +150,14 @@ inline void ReadAMatrixVectorCSR(int32_t M, int32_t &d,
                           int32_t &num_vectors)
 {
     // 1. 读取vector-CSR元信息
-    num_vectors = ReadMetaValue("../data/vector_csr/A_vector_csr_meta.txt", "num_vector_blocks");
-    d = ReadMetaValue("../data/vector_csr/A_vector_csr_meta.txt", "d");
-    int32_t row_blocks = ReadMetaValue("../data/vector_csr/A_vector_csr_meta.txt", "row_blocks_count");
+    num_vectors = ReadMetaValue("../../data/vector_csr/A_vector_csr_meta.txt", "num_vector_blocks");
+    d = ReadMetaValue("../../data/vector_csr/A_vector_csr_meta.txt", "d");
+    int32_t row_blocks = ReadMetaValue("../../data/vector_csr/A_vector_csr_meta.txt", "row_blocks_count");
 
     // 2. 读取并转换vector-CSR data
     size_t vec_data_count = num_vectors * d;
     float *vec_data_float = new float[vec_data_count];
-    ReadBinFile<float>("../data/vector_csr/A_data.bin", vec_data_float, vec_data_count);
+    ReadBinFile<float>("../../data/vector_csr/A_data.bin", vec_data_float, vec_data_count);
 
     vec_csr_data.resize(vec_data_count);
     for (size_t i = 0; i < vec_data_count; i++)
@@ -166,10 +167,10 @@ inline void ReadAMatrixVectorCSR(int32_t M, int32_t &d,
 
     // 3. 读取vector-CSR cols和indptr
     vec_csr_cols.resize(num_vectors);
-    ReadBinFile<int32_t>("../data/vector_csr/A_cols.bin", vec_csr_cols.data(), num_vectors);
+    ReadBinFile<int32_t>("../../data/vector_csr/A_cols.bin", vec_csr_cols.data(), num_vectors);
 
     vec_csr_indptr.resize(row_blocks + 1);
-    ReadBinFile<int32_t>("../data/vector_csr/A_indptr.bin", vec_csr_indptr.data(), row_blocks + 1);
+    ReadBinFile<int32_t>("../../data/vector_csr/A_indptr.bin", vec_csr_indptr.data(), row_blocks + 1);
 
     // 4. 打印验证信息
     std::cout << "\n>>> A矩阵vector-CSR格式信息:" << std::endl;
@@ -177,6 +178,71 @@ inline void ReadAMatrixVectorCSR(int32_t M, int32_t &d,
     std::cout << "行块数: " << row_blocks << "  行指针长度: " << vec_csr_indptr.size() << std::endl;
 
     delete[] vec_data_float;
+}
+
+inline bool CompareFloat32Buffers(const float *actual,
+                                  const float *reference,
+                                  size_t count,
+                                  float abs_tolerance = 1e-3f,
+                                  float rel_tolerance = 1e-3f,
+                                  size_t max_print_mismatches = 10)
+{
+    if (actual == nullptr || reference == nullptr)
+    {
+        std::cerr << "Error: null input passed to CompareFloat32Buffers." << std::endl;
+        return false;
+    }
+
+    size_t mismatch_count = 0;
+    float max_abs_diff = 0.0f;
+    size_t max_abs_diff_index = 0;
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        const float abs_diff = std::fabs(actual[i] - reference[i]);
+        const float tolerance = abs_tolerance + rel_tolerance * std::fabs(reference[i]);
+
+        if (abs_diff > max_abs_diff)
+        {
+            max_abs_diff = abs_diff;
+            max_abs_diff_index = i;
+        }
+
+        if (abs_diff > tolerance)
+        {
+            if (mismatch_count < max_print_mismatches)
+            {
+                std::cout << "Mismatch[" << mismatch_count << "] index=" << i
+                          << ", actual=" << actual[i]
+                          << ", reference=" << reference[i]
+                          << ", abs_diff=" << abs_diff
+                          << ", tolerance=" << tolerance << std::endl;
+            }
+            ++mismatch_count;
+        }
+    }
+
+    std::cout << "\n>>> Result verification summary:" << std::endl;
+    std::cout << "Compared elements: " << count << std::endl;
+    std::cout << "Absolute tolerance: " << abs_tolerance
+              << ", relative tolerance: " << rel_tolerance << std::endl;
+    std::cout << "Max absolute diff: " << max_abs_diff
+              << " (index " << max_abs_diff_index << ")" << std::endl;
+
+    if (mismatch_count == 0)
+    {
+        std::cout << "Verification PASSED." << std::endl;
+        return true;
+    }
+
+    std::cout << "Verification FAILED. Mismatched elements: " << mismatch_count << std::endl;
+    if (mismatch_count > max_print_mismatches)
+    {
+        std::cout << "Only the first " << max_print_mismatches
+                  << " mismatches are printed above." << std::endl;
+    }
+
+    return false;
 }
 
 #endif // FILE_UTILS_H

@@ -111,8 +111,10 @@ int main(int argc, char **argv)
 
     __fp16 *h_B = nullptr;
     float *h_C = nullptr;
+    float *h_C_ref = nullptr;
     CALL_RT(aclrtMallocHost(reinterpret_cast<void **>(&h_B), B_size));
     CALL_RT(aclrtMallocHost(reinterpret_cast<void **>(&h_C), C_size));
+    CALL_RT(aclrtMallocHost(reinterpret_cast<void **>(&h_C_ref), C_size));
 
     std::vector<__fp16> values;
     std::vector<int32_t> row_indices;
@@ -122,8 +124,8 @@ int main(int argc, char **argv)
     int32_t A_num_vectors = 0;
     int32_t A_d = 0;
     ReadAMatrixVectorCSR(M, A_d, values, col_indices, row_indices, A_num_vectors);
-    ReadFloat32ToFp16("../data/B_dense.bin", h_B, B_count);
-    ReadFloat32Matrix("../data/C_dense.bin", h_C, C_count);
+    ReadFloat32ToFp16("../../data/B_dense.bin", h_B, B_count);
+    ReadBinFile<float>("../../data/C_dense.bin", h_C_ref, C_count);
 
     if (A_d != vec_length) {
         std::cerr << "Unsupported vector length in SR-BCRS input: " << A_d << std::endl;
@@ -189,6 +191,13 @@ int main(int argc, char **argv)
 
     CALL_RT(aclrtSynchronizeStream(stream));
 
+    CALL_RT(aclrtMemcpy(h_C, C_size, d_C, C_size, ACL_MEMCPY_DEVICE_TO_HOST));
+
+    const bool verify_passed = CompareFloat32Buffers(h_C, h_C_ref, C_count);
+    std::cout << "Verification result: "
+              << (verify_passed ? "PASS" : "FAIL")
+              << std::endl;
+
     CALL_RT(aclrtFree(d_values));
     CALL_RT(aclrtFree(d_row_indices));
     CALL_RT(aclrtFree(d_col_indices));
@@ -197,7 +206,8 @@ int main(int argc, char **argv)
     CALL_RT(aclrtFree(d_C));
     CALL_RT(aclrtFreeHost(h_B));
     CALL_RT(aclrtFreeHost(h_C));
+    CALL_RT(aclrtFreeHost(h_C_ref));
     CALL_RT(aclrtResetDevice(deviceId));
     CALL_RT(aclFinalize());
-    return 0;
+    return verify_passed ? 0 : 1;
 }
